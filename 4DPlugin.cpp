@@ -45,44 +45,54 @@ void CommandDispatcher (PA_long32 pProcNum, sLONG_PTR *pResult, PackagePtr pPara
 
 void to_display_name(C_TEXT &from, C_TEXT &to)
 {
-	NSString *src = from.copyUTF16String();
-	NSFont *font = [NSFont fontWithName:src size:0.0];
-	if(font)
-		to.setUTF16String([font displayName]);
-	
-	[src release];
+	@autoreleasepool
+	{
+		NSString *src = from.copyUTF16String();
+		NSFont *font = [NSFont fontWithName:src size:0.0];
+		if(font)
+			to.setUTF16String([font displayName]);
+
+		[src release];
+	}
 }
 
 void from_display_name(C_TEXT &from, C_TEXT &to)
 {
-	NSString *src = from.copyUTF16String();
-	NSFont *font = [NSFont fontWithName:src size:0.0];
-	if(font)
+	@autoreleasepool
 	{
-		to.setUTF16String([font fontName]);
-	}else
-	{
-		//fallback method
-		static NSArray *names = [[NSFontManager sharedFontManager] availableFonts];
-		NSUInteger i = [names indexOfObjectPassingTest:^BOOL(id obj, NSUInteger idx, BOOL *stop)
+		NSString *src = from.copyUTF16String();
+		NSFont *font = [NSFont fontWithName:src size:0.0];
+		if(font)
 		{
-			NSFont *f = [NSFont fontWithName:(NSString *)obj size:0.0];
-			if(f)
+			to.setUTF16String([font fontName]);
+		}else
+		{
+			//fallback method
+			// availableFonts is autoreleased (not copy/alloc/new-prefixed), so it
+			// must be retained before being cached in a static, or it will
+			// eventually point at freed memory once the pool that vended it
+			// drains. This is an intentional one-time, process-lifetime retain.
+			static NSArray *names = [[[NSFontManager sharedFontManager] availableFonts] retain];
+			NSUInteger i = [names indexOfObjectPassingTest:^BOOL(id obj, NSUInteger idx, BOOL *stop)
 			{
-				if ([[f displayName]isEqualToString:src])
+				NSFont *f = [NSFont fontWithName:(NSString *)obj size:0.0];
+				if(f)
 				{
-					return YES;
+					if ([[f displayName]isEqualToString:src])
+					{
+						return YES;
+					}
 				}
+				return NO;
+			}];
+			if(NSNotFound != i)
+			{
+				to.setUTF16String([names objectAtIndex:i]);
 			}
-			return NO;
-		}];
-		if(NSNotFound != i)
-		{
-			to.setUTF16String([names objectAtIndex:i]);
 		}
+
+		[src release];
 	}
-	
-	[src release];
 }
 
 #define To_display_name 0
@@ -97,15 +107,25 @@ void FONT_Convert_name(sLONG_PTR *pResult, PackagePtr pParams)
 	Param1.fromParamAtIndex(pParams, 1);
 	Param2.fromParamAtIndex(pParams, 2);
 
-	switch (Param2.getIntValue())
+	try
 	{
-  case To_display_name:
-			to_display_name(Param1, returnValue);
-			break;
+		switch (Param2.getIntValue())
+		{
+	  case To_display_name:
+				to_display_name(Param1, returnValue);
+				break;
 
-  default:
-			from_display_name(Param1, returnValue);
-			break;
+	  default:
+				from_display_name(Param1, returnValue);
+				break;
+		}
+	}
+	catch(...)
+	{
+		// Swallow here too, but only AFTER guaranteeing setReturn() below still
+		// runs. Previously an exception here would propagate to PluginMain's
+		// catch(...) without ever calling setReturn(), leaving 4D waiting on a
+		// reply that would never arrive (a freeze, not a crash).
 	}
 
 	returnValue.setReturn(pResult);
