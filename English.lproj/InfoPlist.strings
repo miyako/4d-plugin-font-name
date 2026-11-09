@@ -1,1 +1,5 @@
-﻿/* Localized versions of Info.plist keys */CFBundleName = "font-name";CFBundleShortVersionString = "1.0";CFBundleGetInfoString = "font-name version 1.0, Copyright 2017 miyako.";
+﻿/* Localized versions of Info.plist keys */
+
+CFBundleName = "font-name";
+CFBundleShortVersionString = "1.0.3";
+CFBundleGetInfoString = "font-name version 1.0.3, Copyright 2017 miyako.";

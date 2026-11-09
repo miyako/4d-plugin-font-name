@@ -10,6 +10,65 @@ The `font-name` plugin converts between a macOS font's internal (PostScript) nam
 
 **Platforms:** macOS. The supplied source implements this command entirely with Cocoa/AppKit APIs (`NSFont`, `NSFontManager`) and contains no `#if VERSIONWIN` branch or other Windows code path — if a Windows build of this plugin exists elsewhere, it isn't covered by this doc.
 
+## Versioning and publication
+
+Run **Bump version** manually, explicitly selecting the destination branch and
+`patch`, `minor`, or `major`. It validates the dispatched immutable commit, clean
+checkout, remote branch and coordinated source metadata before committing only
+`font-name.xcodeproj/project.pbxproj`, `Info.plist`, and
+`English.lproj/InfoPlist.strings`. It creates no tag and triggers no Build.
+The branch must still point to the selected SHA at both remote checks and in
+the push server's advertisement. A required executable pre-push guard rejects
+advances, rewinds, deletions and same-result races after the final check.
+Only that explicit branch is pushed, nonforce, with both `push.followTags=false`
+and `--no-follow-tags`; a missing guard fails closed.
+
+Run **Build** separately on the desired branch. It has no custom inputs and every
+checkout uses the dispatched `github.sha`, not a moving branch or tag.
+`MARKETING_VERSION` is the authoritative strict `X.Y.Z`; all six
+`CURRENT_PROJECT_VERSION` settings, literal source plist version fields, and
+localized source display versions must agree. Known Xcode version-variable
+references are preserved and resolved through that authority. An absent optional
+`CFBundleVersion` stays absent. Prebuilt bundles, API/dependency versions and 4D
+format/schema metadata are not version inputs.
+
+The old bump workflow promised coordinated marketing/current-project versions
+but only changed marketing versions. This migration repairs the six stale
+`CURRENT_PROJECT_VERSION = 1.0.0` settings and localized `1.0` display overrides
+to the existing authoritative **1.0.3**, without incrementing the source version
+or changing the copyright year.
+
+Build retains the existing macOS universal build, Developer ID signing and
+signature verification, ZIP/DMG notarization, and DMG stapling gates. Despite the
+old workflow's Windows comments and unused solution variable, it had no Windows
+job; this AppKit-based plugin's pipeline remains macOS-only. Asset names remain
+`font-name-X.Y.Z.zip` and `font-name-X.Y.Z.dmg`, with unchanged secret names.
+
+Build runs serialize repository-wide across branches. Before native work and
+again immediately after all build/sign/notary/staple gates, authenticated
+paginated release listings (including drafts) and remote tags must show no
+`vX.Y.Z`. Every page and entry is validated; HTTP 404, authorization/network
+errors, malformed responses, and failures on later pages stop publication.
+Only a complete successful no-match listing means absent.
+
+Publication creates a new lightweight tag at the exact selected SHA using REST
+`POST git/refs`, verifies its remote SHA, then uses create-only REST
+`POST releases` with explicit tag, commit, name, `draft=false`,
+`prerelease=false`, and the original empty/no-generated-notes policy.
+Assets are POSTed only to the newly returned release ID. Concurrent tag
+creation is an error even at the same SHA. There is no update, clobber,
+deletion, rollback, automatic retry, or `gh release create` temporary draft.
+
+**Manual recovery:** any failure stops the run and retains an already-created
+tag, release, or uploaded assets. Inspect the error, remote tag SHA, draft and
+published releases, and accepted assets before taking an explicit human recovery
+action. Do not blindly rerun: retained state deliberately blocks publication.
+A failed bump may leave a local metadata commit but never force-updates a moved
+branch; review the destination and dispatch again from its current commit.
+
+Local lifecycle checks (no native build, signing or remote publication):
+`PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/tests -q`.
+
 ---
 
 ## Requirements & platform notes
