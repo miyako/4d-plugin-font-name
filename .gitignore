@@ -1,3 +1,4 @@
 build/*
 font-name.4dbase/userPreferences.*
 font-name.4dbase/Project/DerivedData/*
+__pycache__/
