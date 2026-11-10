@@ -7,6 +7,7 @@
  */
 
 #include "ARRAY_TEXT.h"
+#include <stdexcept>
 
 void ARRAY_TEXT::fromParamAtIndex(PackagePtr pParams, uint32_t index)
 {	
@@ -49,7 +50,6 @@ void ARRAY_TEXT::toParamAtIndex(PackagePtr pParams, uint32_t index)
 			case eVK_Undefined:
 				PA_ClearVariable(&arr);				
 				arr = PA_CreateVariable(eVK_ArrayUnicode);
-				param->fType = arr.fType;
 				break;				
 			
 			default:
@@ -58,6 +58,12 @@ void ARRAY_TEXT::toParamAtIndex(PackagePtr pParams, uint32_t index)
 		
 		if(arr.fType == eVK_ArrayUnicode)
 		{
+			if(!arr.uValue.fArray.fData || !*arr.uValue.fArray.fData)
+			{
+				if(param->fType == eVK_Undefined && arr.uValue.fArray.fData)
+					PA_DisposeHandle(arr.uValue.fArray.fData);
+				throw std::runtime_error("ARRAY_TEXT output has no array storage");
+			}
 			
 			PA_ResizeArray(&arr, this->_CUTF16StringArray->empty() ? 0 : (uint32_t)(this->_CUTF16StringArray->size() - 1));
 			
@@ -69,6 +75,7 @@ void ARRAY_TEXT::toParamAtIndex(PackagePtr pParams, uint32_t index)
 				PA_SetStringInArray(arr, i, &str);					
 			}
 			
+			param->fType = arr.fType;
 			param->fFiller = 0;
 			param->uValue.fArray.fCurrent = arr.uValue.fArray.fCurrent;
 			param->uValue.fArray.fNbElements = arr.uValue.fArray.fNbElements;
