@@ -69,6 +69,104 @@ branch; review the destination and dispatch again from its current commit.
 Local lifecycle checks (no native build, signing or remote publication):
 `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s .github/tests -q`.
 
+## Native ownership maintenance
+
+The exported entry is `FourDPackex` in the bundled SDK, forwarding to
+`PluginMain` and `CommandDispatcher` in `4DPlugin.cpp`. Selector 1 is the only
+command: both tracked manifests declare `FONT Convert name(&T;&L):T`.
+`C_TEXT` copies borrowed input into a C++ string and writes results through
+the SDK content setter; it does not transfer an array-style descriptor.
+Cocoa `copy` results are released after use, and the fallback font-name cache
+has one intentional process-lifetime retain.
+
+The Xcode source phase and both Visual Studio projects compile the same
+bundled `4DPluginAPI.c`, `4DPlugin.cpp`, and every wrapper implementation in
+`4D Plugin API/Classes`: `C_BLOB`/`CBytes`, `C_DATE`, `C_INTEGER`, `C_LONGINT`,
+`C_PICTURE`/`CPicture`, `C_POINTER`, `C_REAL`, `C_TEXT`, `C_TIME`, and
+`ARRAY_BOOLEAN`, `ARRAY_DATE`, `ARRAY_INTEGER`, `ARRAY_LONGINT`, `ARRAY_REAL`,
+`ARRAY_TEXT`, `ARRAY_TIME`. All their headers are included by `4DPluginAPI.h`
+(with `C_TYPES.h` providing the string/container types). Thus picture and
+array helpers are compiled even though this command does not call them.
+The project filters, prefix header, SDK public/private/entry-point/flags
+headers, `.def` export, source and bundled manifests, constants and plist
+resources were included in the reachability inventory. There are no separate
+native source copies or bundled third-party native libraries in this tree.
+The prebuilt macOS/Windows plugin files are not rebuilt or certified here.
+
+The ownership baseline is commit
+`5cabee844fe41f98a8541e5e93ca19917a0ad7df`. The bundled SDK implementation has
+SHA-256 `2721c3d4338cc2a350599ffcee2a8008abaa756acfd45dd710720c64ca8c8ce3`,
+unchanged since its repository introduction at
+`64ce30becf488f307d9399b9aa037f0f0e63438c`. There is no verified upstream
+release pin: implementation `v14` and header `v13` comments are not upstream
+provenance. The SDK implementation and headers are deliberately unchanged.
+
+Relevant bundled contracts and corrections:
+
+- `PA_SetStringInArray` disposes the old element and shallow-transfers the
+  incoming descriptor only for a Unicode array with non-null data, index
+  `0 <= i <= fNbElements`, and non-null descriptor pointer. Rejection retains
+  caller ownership. `ARRAY_TEXT` independently allocates each accepted output,
+  copies borrowed inputs before mutation, and now throws `std::runtime_error`
+  before allocating outputs if array storage is unavailable; an Undefined
+  output is not published as a successful array on that path. Wrong-type
+  destinations retain the existing no-op behavior and allocate nothing.
+- Scalar string/picture variable setters shallow-alias without clearing old
+  content. Picture helper destinations now start Undefined before receiving
+  owned or synchronous borrowed values, rather than overwriting allocated
+  initial empties. The path argument is cleared exactly once; a borrowed file
+  output is retained by `setPicture` before its argument owner is cleared.
+  `setBytes` releases the creator reference after `setPicture` retains it.
+- Picture transforms and thumbnails preserve their owning return handoffs
+  by detaching those values before argument cleanup; synchronous borrowed
+  picture inputs are detached without disposal. Command results are cleared
+  except for the SDK's raw-kind-zero command-handle allocation failure
+  sentinel. `PA_GetVariableKind` normalizes that sentinel to a string kind,
+  so it must not be used to decide whether that sentinel owns a string.
+  These picture command IDs are procedures; synthetic owning-return cases
+  additionally check the generic cleanup boundary, not a claim that those
+  procedures normally return strings or pictures.
+- Charset conversion reports **bytes**, excluding any terminator. `createCopy`
+  divides by `sizeof(PA_Unichar)` before constructing its UTF-16 string.
+
+Local regression (macOS, existing Xcode command-line tools, no installation):
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tests/native/run.py --baseline --output /tmp/font-name-ownership
+```
+
+This directly compiles the actual plugin, every wrapper, and the **full,
+unchanged** SDK with ASan/UBSan. Only the engine callback and font lookup/list
+are synthetic: dispatcher tests do not read installed fonts or create UI.
+The same final harness is compiled against an immutable `git archive` of the
+baseline. It requires named baseline failures for the path double disposal,
+charset heap over-read, overwritten empty string/picture owners, missing
+`setBytes` reference release, and rejected array storage, plus synthetic
+owning command-return cleanup. It checks exact ASCII/BMP/surrogate-pair/empty
+text, `.png`/`.jpg`/`.tif`, allocated and null empty strings, byte capacity,
+UTF-16 lengths and termination, independent array outputs, replacement,
+shrink/clear, borrowed-input copies, synchronous argument lifetimes, owning
+picture handoff survival, command errors and handle-allocation failure.
+Explicit string/handle/picture-reference balances supplement sanitizers;
+macOS LeakSanitizer is unavailable.
+
+**Deferred:** `C_POINTER::getVariable` mixes pointer-value output with metadata
+reference reconstruction; no ownership cleanup is guessed for it.
+Successful `PA_GetPictureData` metadata-string ownership and SDK-only app-path
+outputs are also ambiguous and unchanged. Failed picture-data descriptors are
+poisoned by the harness and never read/adopted/cleared by the wrappers.
+No object/collection/JSON APIs or first-party method callbacks are present
+in this bundled API/wrapper set. The SDK's `PA_ResizeArray` can update its
+element count even after resize failure; normal array tests do **not** certify
+that unrelated SDK OOM behavior, which is not rewritten here.
+This is arm64 macOS synthetic-host evidence, not execution in real 4D or
+Windows and not reproduction/certification of the originating Poppler crash.
+The separate **Native ownership** pull-request workflow runs
+these unsigned regressions and the existing lifecycle fixture tests only;
+it has read-only repository permissions and publishes no binary artifacts.
+The existing release, signing, notarization, packaging and publication
+workflows remain manual and are not run by the regression.
+
 ---
 
 ## Requirements & platform notes

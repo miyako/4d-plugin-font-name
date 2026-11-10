@@ -1,0 +1,23 @@
+name: Native ownership
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Source and publication lifecycle tests (local fixtures only)
+        run: python3 -m unittest discover -s .github/tests -q
+      - name: Full-SDK ASan and UBSan baseline comparison (unsigned)
+        run: python3 tests/native/run.py --baseline --output "$RUNNER_TEMP/native-ownership"
